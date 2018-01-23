@@ -22,24 +22,21 @@ How To Start:
 
 //in some function
 
-ISO_init(Your SDL_Renderer,T/F alternateProcessThread,T/F multipleMapRenderingTheads,TargetFPS);
+ISO_init(Renderer,T/F alternateProcessThread,T/F multipleMapRenderingTheads,TargetFPS);
 
 //then add tiles into your map into a tileSet
 
-ISO_extendTileSet(...)//example of a texture is provided
+ISO_extendTileSet(IMAGE_FILE,BLOCK_DATA);//example of a texture is provided
 
+//then setMap data by function
 
-//then setMap data by substituting values in the grid -- manually or by function
+ISO_setMapData(POSITION,OFFSET,ID);//in xyz form
 
-ISO_grid[x][y][z]=blockID;
-
-ISO_setMapData(...);
-
-ISO_setBlockData(...);
+ISO_setBlockData(POSITION,ID);//in xyz form
 
 //then call this in a gameLoop
 
-ISO_renderIsoMap()
+ISO_renderIsoMap();
 
 //simple as that!
 
