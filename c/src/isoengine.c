@@ -261,7 +261,7 @@ void (*deleteSpriteExtend)(void) = NULL;
 
 unsigned char ISO_viewdir = 0;
 unsigned char ISO_gridCached=0;
-unsigned short ISO_width=0,ISO_height=0,ISO_depth=0;
+unsigned short ISO_width=64,ISO_height=64,ISO_depth=16;
 float ISO_scale=.5f;
 int ISO_SCREEN_WIDTH=800,ISO_SCREEN_HEIGHT=600;
 int ISO_xscroll=0,ISO_yscroll=0;
