@@ -475,6 +475,7 @@ int* ISO_editDirSelect(unsigned short blockID){
 
 
     ISO_gridCached=0;
+	return sl_s;
 }
 
 void ISO_detectSelect(){
