@@ -421,15 +421,25 @@ int* ISO_editDirSelect(unsigned short blockID){
     sl_s[2] = slz;
     sl_s[3] = -1;
 
+    if(slx<0||sly<0||slz<0){
+        return sl_s;
+    }
+
+    if(blockID==0){//allow external 'deletion' by overwriting 0
+        if(slx<ISO_width||sly<ISO_height||slz<ISO_depth){
+            sl_s[3] = ISO_grid[slx][sly][slz];
+            ISO_grid[slx][sly][slz]=blockID;
+        }
+        return sl_s;
+    }
+
     SDL_Rect scaledRect;
     scaledRect.x=ISO_scaledRect->x;
     scaledRect.y=ISO_scaledRect->y;
     scaledRect.w=ISO_scaledRect->w;
     scaledRect.h=ISO_scaledRect->h;
 
-    if(slx==-1||sly==-1||slz==-1){
-        return sl_s;
-    }
+
     int QTS = (int)(ISO_tileSize*ISO_scale/4.0);
     int TS = QTS*4;
     int HTS = QTS*2;
@@ -466,16 +476,15 @@ int* ISO_editDirSelect(unsigned short blockID){
         return sl_s;
     }
 
+    sl_s[0] = dirSetX[ISO_viewdir];
+    sl_s[1] = dirSetY[ISO_viewdir];
+    sl_s[2] = slz;
     sl_s[3] = ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][slz];
 
     ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][slz]=blockID;
 
-    //printf("%i, %i, %i\n",ISO_slx,ISO_slx,ISO_slx);
-    //printf("BLOCK: %i\n",ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][ISO_slz+1]);
-
-
     ISO_gridCached=0;
-	return sl_s;
+    return sl_s;
 }
 
 void ISO_detectSelect(){
