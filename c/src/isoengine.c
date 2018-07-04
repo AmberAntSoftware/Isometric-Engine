@@ -207,7 +207,9 @@ ISO_Sprite* ISO_X_createSprite(ISO_SpriteList* place);
 void ISO_X_addToSpriteList(ISO_Sprite* sprite);
 void ISO_X_deleteSpriteCache();
 void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer, int copied);
+void ISO_X_deleteSpriteFromList(ISO_Sprite *sprite);
 
+///General stuff that doesn't need to concern users
 int ISO_inRect(int rx, int ry, int rw, int rh, int x, int y);
 int ISO_inCircle(int rx, int ry, double rm, int x, int y);
 int ISO_inDiamond(int x,int y,int xsize,int ysize,int px,int py);
@@ -293,7 +295,7 @@ void ISO_exit(){
 
     ISO_threadedSelector = 0;
 
-    int x;
+    int x; //later variable for freeing multiple arrays of resources
     int i;
     for(i=0;i<ISO_sizes[0];i++){
         if(ISO_TileSet[0][i]){
@@ -739,6 +741,10 @@ void ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect){
         cache = cache->next;
     }while(cache!=NULL);
 }
+
+///TODO
+///FIXME
+/**
 int ISO_X_determineScanline(){
     int QTS = (int)(ISO_tileSize*ISO_scale/4.0);
 	int HTS = QTS*2;
@@ -759,6 +765,7 @@ int ISO_X_determineScanline(){
 
     return row;
 }
+//**/
 
 
 
@@ -830,24 +837,26 @@ int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b
     if(layer==NULL){
         return -1;
     }
-    SDL_Rect *clip = SDL_malloc(sizeof(SDL_Rect));
+    /*SDL_Rect *clip = SDL_malloc(sizeof(SDL_Rect));
     clip->x=0;clip->y=0;
     if(clip==NULL){
         SDL_free(layer);
         return -1;
-    }
+    }*/
     SDL_Surface *img = IMG_Load(file);
     if(img==NULL){
         SDL_free(layer);
-        SDL_free(clip);
+        //SDL_free(clip);
         return -1;
     }
-    clip->w=img->w;
-    clip->h=img->h;
+    layer->clip.x=0;
+    layer->clip.y=0;
+    layer->clip.w=img->w;
+    layer->clip.h=img->h;
     SDL_Texture *tex = SDL_CreateTextureFromSurface(ISO_defaultRenderer,img);
     if(tex==NULL){
         SDL_free(layer);
-        SDL_free(clip);
+        //SDL_free(clip);
         SDL_FreeSurface(img);
         return -1;
     }
@@ -862,7 +871,7 @@ int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b
     layer->g = (Uint8)g;
     layer->b = (Uint8)b;
     layer->sprite = NULL;
-    layer->clip=clip;
+    //layer->clip=clip;
 
     if(sprite->sprite==NULL){
         sprite->sprite=layer;
@@ -959,7 +968,7 @@ ISO_SpriteList* ISO_X_createSpriteList(){
     tmp->prev=node;
     return tmp;
 }
-void ISO_X_deleteSpriteCache(){
+/*void ISO_X_deleteSpriteCache(){
     ISO_SpriteList* node = ISO_sprites;
     ISO_SpriteList* last = node;
     while(node!=NULL){
@@ -970,6 +979,11 @@ void ISO_X_deleteSpriteCache(){
 
         SDL_free(last);
 
+    }
+}*/
+void ISO_X_deleteSpriteCache(){
+    while(ISO_sprites!=NULL){
+        ISO_deleteSprite(ISO_sprites->leaf);
     }
 }
 void ISO_deleteSprite(ISO_Sprite* sprite){
