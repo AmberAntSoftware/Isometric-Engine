@@ -206,8 +206,7 @@ ISO_SpriteList* ISO_X_createSpriteList();
 ISO_Sprite* ISO_X_createSprite(ISO_SpriteList* place);
 void ISO_X_addToSpriteList(ISO_Sprite* sprite);
 void ISO_X_deleteSpriteCache();
-void ISO_X_deleteSprite(ISO_Sprite* sprite);
-void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer);
+void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer, int copied);
 
 int ISO_inRect(int rx, int ry, int rw, int rh, int x, int y);
 int ISO_inCircle(int rx, int ry, double rm, int x, int y);
@@ -732,7 +731,7 @@ void ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect){
                     SDL_SetTextureColorMod(layer->tex, layer->r,layer->g,layer->b);
                     SDL_RenderCopy(ISO_defaultRenderer,
                         layer->tex,
-                        layer->clip,scaledRect);
+                        &(layer->clip),scaledRect);
                     layer = layer->sprite;
                 }while(layer!=NULL);
             }
@@ -796,7 +795,26 @@ int ISO_inCubeD(double x,double y,double xsize,double ysize,double px,double py)
 }
 
 
-ISO_Sprite* ISO_extendSpriteSetBlank(){
+ISO_Sprite *ISO_copySprite(ISO_Sprite *sprite){
+
+    ISO_Sprite *clone = SDL_calloc(sizeof(ISO_Sprite),1);
+    ISO_SpriteLayer *lnode = sprite->sprite;
+    ISO_SpriteLayer *cnode = clone->sprite;
+
+    while(lnode!=NULL){
+
+        ISO_SpriteLayer *xtra = SDL_calloc(sizeof(ISO_SpriteLayer),1);
+        SDL_memcpy(xtra,lnode,sizeof(ISO_SpriteLayer));
+
+        xtra->sprite = NULL;
+        cnode = xtra;
+        lnode = lnode->sprite;
+        cnode = cnode->sprite;
+    }
+    return clone;
+}
+
+ISO_Sprite* ISO_createSprite(){
     ISO_Sprite* sprite = ISO_X_createSprite(ISO_X_createSpriteList());
     return sprite;
 }
@@ -936,6 +954,7 @@ ISO_SpriteList* ISO_X_createSpriteList(){
     while(node->next!=NULL){
         node=node->next;
     }
+    tmp->isCopied=0;
     node->next=tmp;
     tmp->prev=node;
     return tmp;
@@ -953,7 +972,7 @@ void ISO_X_deleteSpriteCache(){
 
     }
 }
-void ISO_X_deleteSprite(ISO_Sprite* sprite){
+void ISO_deleteSprite(ISO_Sprite* sprite){
 
     if(sprite==NULL){
         return;
@@ -963,29 +982,65 @@ void ISO_X_deleteSprite(ISO_Sprite* sprite){
         sprite->freeExtension(sprite->extend);
     }
 
-    ISO_X_deleteSpriteLayers(sprite->sprite);
+    if(sprite->_X_place!=NULL){
+        ISO_X_deleteSpriteLayers(sprite->sprite, sprite->_X_place->isCopied);
+
+        ISO_X_deleteSpriteFromList(sprite);
+
+    } else {
+        ISO_X_deleteSpriteLayers(sprite->sprite, 0);
+    }
 
     SDL_free(sprite);
 
 }
-void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer){
+void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer, int copied){
     ISO_SpriteLayer *last;
     while(layer!=NULL){
         last = layer;
 
-        if(layer->clip!=NULL){
+        /*if(layer->clip!=NULL){
             SDL_free(layer->clip);
-        }
-        if(layer->img!=NULL){
-            SDL_FreeSurface(layer->img);
-        }
-        if(layer->tex!=NULL){
-            SDL_DestroyTexture(layer->tex);
+        }*/
+        if(!copied){
+            if(layer->img!=NULL){
+                SDL_FreeSurface(layer->img);
+            }
+            if(layer->tex!=NULL){
+                SDL_DestroyTexture(layer->tex);
+            }
         }
         layer = layer->sprite;
         SDL_free(last);
     }
 }
+void ISO_X_deleteSpriteFromList(ISO_Sprite *sprite){
+
+    if(sprite->_X_place==NULL){
+        return;
+    }
+
+    if(sprite->_X_place==ISO_sprites){
+        if(sprite->_X_place->next==NULL){
+            ISO_sprites = NULL;
+        }else{
+            ISO_sprites = sprite->_X_place->next;
+        }
+
+        SDL_free(sprite->_X_place);
+        return;
+    }
+
+    if(sprite->_X_place->next==NULL){
+        sprite->_X_place->prev->next = NULL;
+    }else{
+        sprite->_X_place->prev->next = sprite->_X_place->next;
+    }
+
+    SDL_free(sprite->_X_place);
+
+}
+
 /*
 void ISO_X_deleteSpriteItem(ISO_SpriteList** delet){
     ISO_X_deleteSprite((*delet)->leaf,NULL);

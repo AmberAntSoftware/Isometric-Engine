@@ -209,7 +209,7 @@ typedef struct ISO_Sprite{
 
 typedef struct ISO_SpriteLayer{
     Uint8 r,g,b;
-    SDL_Rect*              clip;
+    SDL_Rect               clip;
     SDL_Surface*           img;
     SDL_Texture*           tex;
     struct ISO_SpriteLayer*sprite;
@@ -222,11 +222,12 @@ typedef struct ISO_Sprite{
     struct ISO_SpriteList* _X_place;///where this exists in the spriteList -- DO NOT EDIT
     /*Custom User Data*/
     void (*renderSprite)(struct ISO_Sprite* sprite);
-    void                 *extend;
+    void                 * extend;
     void (*freeExtension)(void*);
 } ISO_Sprite;
 
 typedef struct ISO_SpriteList{
+    char                   isCopied;
     ISO_Sprite*            leaf;
     struct ISO_SpriteList* next;
     struct ISO_SpriteList* prev;
@@ -329,8 +330,11 @@ void ISO_setGraphicsSet(unsigned short setID);
 void ISO_setTargetFPS(int FPS);
 
 //FIXME
-///Add a blank sprite
-ISO_Sprite* ISO_extendSpriteSetBlank();
+///Create a blank sprite
+ISO_Sprite* ISO_createSprite();
+///Deletes a sprite properly -- if a copy, does not free pointer resources
+void ISO_deleteSprite(ISO_Sprite* sprite);
+
 ///Add a graphical layer for a sprite (reverse order, last layer add first)
 int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface);
 ///Renders a sprite at specified rect
