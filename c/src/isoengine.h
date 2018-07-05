@@ -323,11 +323,15 @@ int ISO_setTileImagesFromFile(ISO_Tile* tile, char* imageFile);
 ///returns location and previous block type in position [3] -1 type if failure
 int* ISO_editDirSelect(unsigned short blockID);
 
+
+
 ///Sets which data set to render from
 void ISO_setGraphicsSet(unsigned short setID);
 
 ///If Automatic, sets the target FPS of independent threads
 void ISO_setTargetFPS(int FPS);
+
+
 
 //FIXME
 ///Create a blank sprite
@@ -336,7 +340,7 @@ ISO_Sprite* ISO_createSprite();
 void ISO_deleteSprite(ISO_Sprite* sprite);
 
 ///Add a graphical layer for a sprite (reverse order, last layer add first)
-int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface);
+ISO_SpriteLayer* ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface);
 ///Renders a sprite at specified rect
 void ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect);
 //FIXME

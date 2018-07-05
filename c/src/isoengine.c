@@ -804,21 +804,44 @@ int ISO_inCubeD(double x,double y,double xsize,double ysize,double px,double py)
 
 ISO_Sprite *ISO_copySprite(ISO_Sprite *sprite){
 
-    ISO_Sprite *clone = SDL_calloc(sizeof(ISO_Sprite),1);
+    if(sprite==NULL){
+        return NULL;
+    }
+
+    if(sprite->sprite==NULL){
+        return NULL;
+    }
+
+    ISO_Sprite *blank = ISO_createSprite();
+
+    blank->_X_place->isCopied = 1;
+
+    if(blank==NULL){
+        return NULL;
+    }
+
+
+    //due to shenanigans, have to associate first layer to blank->sprite before loop
+    ISO_SpriteLayer *xtra = SDL_calloc(sizeof(ISO_SpriteLayer),1);
+    SDL_memcpy(xtra,sprite->sprite,sizeof(ISO_SpriteLayer));
+    xtra->sprite=NULL;
+    blank->sprite = xtra;
+
+
     ISO_SpriteLayer *lnode = sprite->sprite;
-    ISO_SpriteLayer *cnode = clone->sprite;
+    lnode = lnode->sprite;
 
     while(lnode!=NULL){
 
-        ISO_SpriteLayer *xtra = SDL_calloc(sizeof(ISO_SpriteLayer),1);
+        xtra->sprite = SDL_calloc(sizeof(ISO_SpriteLayer),1);
+        xtra = xtra->sprite;
         SDL_memcpy(xtra,lnode,sizeof(ISO_SpriteLayer));
-
         xtra->sprite = NULL;
-        cnode = xtra;
+
         lnode = lnode->sprite;
-        cnode = cnode->sprite;
     }
-    return clone;
+
+    return blank;
 }
 
 ISO_Sprite* ISO_createSprite(){
@@ -831,11 +854,11 @@ ISO_Sprite* ISO_createSprite(){
     return sprite;
 }*/
 
-int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface){
+ISO_SpriteLayer* ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface){
 
     ISO_SpriteLayer *layer = SDL_malloc(sizeof(ISO_SpriteLayer));
     if(layer==NULL){
-        return -1;
+        return NULL;
     }
     /*SDL_Rect *clip = SDL_malloc(sizeof(SDL_Rect));
     clip->x=0;clip->y=0;
@@ -847,7 +870,7 @@ int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b
     if(img==NULL){
         SDL_free(layer);
         //SDL_free(clip);
-        return -1;
+        return NULL;
     }
     layer->clip.x=0;
     layer->clip.y=0;
@@ -858,7 +881,7 @@ int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b
         SDL_free(layer);
         //SDL_free(clip);
         SDL_FreeSurface(img);
-        return -1;
+        return NULL;
     }
     if(!keepSurface){
         SDL_FreeSurface(img);
@@ -884,7 +907,7 @@ int ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b
         addTo->sprite = layer;
     }
 
-    return 0;
+    return layer;
 }
 
 /**
