@@ -178,6 +178,7 @@
 #include <SDL2/sdl.h>
 
 #include "isoengine.h"
+#include "SDL2_rotozoom.h"
 
 /*void* ISO_genMultiDArray(int nrows, int ncolumns, void* array){
     return malloc(nrows * sizeof *array + (nrows * (ncolumns * sizeof *array)));
@@ -189,6 +190,18 @@ x=HTS*x+HTS*y+ISO_xscroll
 y=-QTS*x+QTS*y-z*HTS+ISO_yscroll;
 
 */
+
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+const Uint32 ISO_RMASK = 0xff000000;
+const Uint32 ISO_GMASK = 0x00ff0000;
+const Uint32 ISO_BMASK = 0x0000ff00;
+const Uint32 ISO_AMASK = 0x000000ff;
+#else
+const Uint32 ISO_RMASK = 0x000000ff;
+const Uint32 ISO_GMASK = 0x0000ff00;
+const Uint32 ISO_BMASK = 0x00ff0000;
+const Uint32 ISO_AMASK = 0xff000000;
+#endif
 
 static char ISO_inited = 0;
 static char ISO_threadedSelector = 0;
@@ -210,10 +223,10 @@ void ISO_X_deleteSpriteLayers(ISO_SpriteLayer *layer, int copied);
 void ISO_X_deleteSpriteFromList(ISO_Sprite *sprite);
 
 ///General stuff that doesn't need to concern users
-int ISO_inRect(int rx, int ry, int rw, int rh, int x, int y);
-int ISO_inCircle(int rx, int ry, double rm, int x, int y);
-int ISO_inDiamond(int x,int y,int xsize,int ysize,int px,int py);
-int ISO_inCube(int x,int y,int xsize,int ysize,int px,int py);
+int inline ISO_inRect(int rx, int ry, int rw, int rh, int x, int y);
+int inline ISO_inCircle(int rx, int ry, double rm, int x, int y);
+int inline ISO_inDiamond(int x,int y,int xsize,int ysize,int px,int py);
+int inline ISO_inCube(int x,int y,int xsize,int ysize,int px,int py);
 int ISO_inRectD(double rx, double ry, double rw, double rh, double x, double y);
 int ISO_inCircleD(double rx, double ry, double rm, double x, double y);
 int ISO_inDiamondD(double x,double y,double xsize,double ysize,double px,double py);
@@ -223,6 +236,9 @@ void ISO_rotate();
 void ISO_unCache();
 void ISO_compositeRender();
 
+
+void inline ISO_X_uncacheRender(int x, int y, int z, SDL_Rect *rect);
+void inline ISO_X_cacheRender(int x, int y, int z, int TS, int xI, int yI, int ox, int oy, int oz, SDL_Rect *rect);
 
 
 
@@ -273,7 +289,7 @@ void ISO_init(SDL_Renderer* defaultRenderer, int threadSelectionDetection, int t
 
     //fast graphical processing hacks for air and tile selector
     ISO_TileSet[0][0] = malloc(sizeof(ISO_Tile*));
-    ISO_TileSet[0][0] = ISO_X_createTile(0,0,0,1);
+    ISO_TileSet[0][0] = ISO_X_createTile(0,0,0,0);
     ISO_setTileImagesFromFile(ISO_TileSet[0][0],"res/selector.png");
 
     ISO_sizes[0]=1;
@@ -345,10 +361,17 @@ int ISO_generateBlankMap(int w,int h, int dpth){
     ISO_height=h;
     ISO_depth=dpth;
 
-    for(x=0;x<ISO_width;x++){
-        for(y=0;y<ISO_height;y++){
-            for(z=0;z<ISO_depth;z++){
+    //clear map caches
+    for(x=0;x<256;x++){
+        for(y=0;y<256;y++){
+            for(z=0;z<256;z++){
                 ISO_grid[x][y][z]=0;
+                ISO_Sprite *node = ISO_spriteCache[x][y][z];
+                ISO_Sprite *next;
+                while(node!=NULL){
+                    next = node->next;
+                    ISO_deleteSprite(node);
+                }
                 ISO_spriteCache[x][y][z]=NULL;
             }
         }
@@ -561,9 +584,11 @@ void ISO_compositeRender(){
 
     int TS = QTS*4;
 
-    SDL_Rect scaledRect;
-    scaledRect.w = TS;
-    scaledRect.h = TS;
+    //allow for external custom rendering
+    //this should not be a multithreadded process anyway
+    //SDL_Rect scaled rect;
+    ISO_scaledRect->w = TS;
+    ISO_scaledRect->h = TS;
 
 
 
@@ -573,114 +598,134 @@ void ISO_compositeRender(){
 	register int yI = ISO_SCREEN_HEIGHT+TS;
 
 	for(x = gwidth1; x+1 ;x--){
-	    scaledRect.x=HTS*x+ISO_xscroll-HTS;
+	    ISO_scaledRect->x=HTS*x+ISO_xscroll-HTS;
 		for(y = 0; y < gheight;y++){
-            scaledRect.x+=HTS;
-            scaledRect.y=-QTS*x+QTS*y+ISO_yscroll+HTS;
+            ISO_scaledRect->x+=HTS;
+            ISO_scaledRect->y=-QTS*x+QTS*y+ISO_yscroll+HTS;
             for(z = 0; z < gdepth;z++){
-                scaledRect.y-=HTS;
+                ISO_scaledRect->y-=HTS;
                 switch(offset){
                     case(0):
-                        if(/*ISO_grid[x][y][0]&&*/ISO_gridCache[x][y][z]){
+                        ISO_X_uncacheRender(x,y,z,ISO_scaledRect);
+                        /*if(ISO_gridCache[x][y][z]){
                             SDL_RenderCopy(ISO_defaultRenderer,
                                            ISO_TileSet[ISO_set][ISO_grid[x][y][z]]->tex[ISO_viewdir],
-                                           ISO_baseRect,&scaledRect);
+                                           ISO_baseRect,ISO_scaledRect);
                         }
                         if(ISO_spriteCache[x][y][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[x][y][z], &scaledRect);
-                        }
+                                ISO_renderSprite(ISO_spriteCache[x][y][z], ISO_scaledRect);
+                        }*/
                     break;
                     case(1):
-                        if(/*ISO_grid[y][gwidth1-x][0]&&*/ISO_gridCache[y][gwidth1-x][z]){
+                        ISO_X_uncacheRender(y,gwidth1-x,z,ISO_scaledRect);
+                        /*if(ISO_gridCache[y][gwidth1-x][z]){
                             SDL_RenderCopy(ISO_defaultRenderer,
                                            ISO_TileSet[ISO_set][ISO_grid[y][gwidth1-x][z]]->tex[ISO_viewdir],
-                                           ISO_baseRect,&scaledRect);
+                                           ISO_baseRect,ISO_scaledRect);
                         }
                         if(ISO_spriteCache[y][gwidth1-x][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[y][gwidth1-x][z], &scaledRect);
-                        }
+                                ISO_renderSprite(ISO_spriteCache[y][gwidth1-x][z], ISO_scaledRect);
+                        }*/
                     break;
                     case(2):
-                        if(/*ISO_grid[gwidth1-x][gheight1-y][0]&&*/ISO_gridCache[gwidth1-x][gheight1-y][z]){
+                        ISO_X_uncacheRender(gwidth1-x,gheight1-y,z,ISO_scaledRect);
+                        /*
+                        if(ISO_gridCache[gwidth1-x][gheight1-y][z]){
                             SDL_RenderCopy(ISO_defaultRenderer,
                                            ISO_TileSet[ISO_set][ISO_grid[gwidth1-x][gheight1-y][z]]->tex[ISO_viewdir],
-                                           ISO_baseRect,&scaledRect);
+                                           ISO_baseRect,ISO_scaledRect);
                         }
                         if(ISO_spriteCache[gwidth1-x][gheight1-y][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[gwidth1-x][gheight1-y][z], &scaledRect);
+                                ISO_renderSprite(ISO_spriteCache[gwidth1-x][gheight1-y][z], ISO_scaledRect);
                         }
+                        */
                     break;
                     case(3):
-                        if(/*ISO_grid[gheight1-y][x][0]&&*/ISO_gridCache[gheight1-y][x][z]){
+                        ISO_X_uncacheRender(gheight1-y,x,z,ISO_scaledRect);
+                        /*
+                        if(ISO_gridCache[gheight1-y][x][z]){
                             SDL_RenderCopy(ISO_defaultRenderer,
                                            ISO_TileSet[ISO_set][ISO_grid[gheight1-y][x][z]]->tex[ISO_viewdir],
-                                           ISO_baseRect,&scaledRect);
+                                           ISO_baseRect,ISO_scaledRect);
                         }
                         if(ISO_spriteCache[gheight1-y][x][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[gheight1-y][x][z], &scaledRect);
+                                ISO_renderSprite(ISO_spriteCache[gheight1-y][x][z], ISO_scaledRect);
                         }
+                        */
                     break;
                     case(4):
+                        ISO_X_cacheRender(x, y, z, TS, xI, yI, x, y, z, ISO_scaledRect);
+                        /*
                         ISO_gridCache[x][y][z]=0;
                         if(ISO_grid[x][y][0]&&ISO_grid[x][y][z]&&
-                            ISO_inRect(-TS,-TS,xI,yI,scaledRect.x,scaledRect.y)&&ISO_checkRender(x,y,z)){
+                            ISO_inRect(-TS,-TS,xI,yI,ISO_scaledRect->x,ISO_scaledRect->y)&&ISO_checkRender(x,y,z)){
                                 SDL_RenderCopy(ISO_defaultRenderer,
                                                ISO_TileSet[ISO_set][ISO_grid[x][y][z]]->tex[ISO_viewdir],
-                                               ISO_baseRect,&scaledRect);
+                                               ISO_baseRect,ISO_scaledRect);
                                 ISO_gridCache[x][y][z]=1;
                         }
                         if(ISO_spriteCache[x][y][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[x][y][z], &scaledRect);
+                                ISO_renderSprite(ISO_spriteCache[x][y][z], ISO_scaledRect);
                         }
+                        */
                     break;
                     case(5):
+                        ISO_X_cacheRender(y,ISO_width-1-x, z, TS, xI, yI, x, y, z, ISO_scaledRect);
+                        /*
                         ISO_gridCache[y][ISO_width-1-x][z]=0;
                         if(ISO_grid[y][ISO_width-1-x][0]&&ISO_grid[y][ISO_width-1-x][z]&&
-                            ISO_inRect(-TS,-TS,xI,yI,scaledRect.x,scaledRect.y)&&ISO_checkRender(x,y,z)){
+                            ISO_inRect(-TS,-TS,xI,yI,ISO_scaledRect->x,ISO_scaledRect->y)&&ISO_checkRender(x,y,z)){
                                 SDL_RenderCopy(ISO_defaultRenderer,
                                                ISO_TileSet[ISO_set][ISO_grid[y][ISO_width-1-x][z]]->tex[ISO_viewdir],
-                                               ISO_baseRect,&scaledRect);
+                                               ISO_baseRect,ISO_scaledRect);
                                 ISO_gridCache[y][ISO_width-1-x][z]=1;
                         }
                         if(ISO_spriteCache[y][gwidth1-x][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[y][gwidth1-x][z], &scaledRect);
+                                ISO_renderSprite(ISO_spriteCache[y][gwidth1-x][z], ISO_scaledRect);
                         }
+                        */
                     break;
                     case(6):
+                        ISO_X_cacheRender(ISO_width-x-1,ISO_height-y-1, z, TS, xI, yI, x, y, z, ISO_scaledRect);
+                        /*
                         ISO_gridCache[ISO_width-x-1][ISO_height-y-1][z]=0;
                         if(ISO_grid[ISO_width-x-1][ISO_height-y-1][0]&&ISO_grid[ISO_width-x-1][ISO_height-y-1][z]&&
-                            ISO_inRect(-TS,-TS,xI,yI,scaledRect.x,scaledRect.y)&&ISO_checkRender(x,y,z)){
+                            ISO_inRect(-TS,-TS,xI,yI,ISO_scaledRect->x,ISO_scaledRect->y)&&ISO_checkRender(x,y,z)){
                                 SDL_RenderCopy(ISO_defaultRenderer,
                                                ISO_TileSet[ISO_set][ISO_grid[ISO_width-x-1][ISO_height-y-1][z]]->tex[ISO_viewdir],
-                                               ISO_baseRect,&scaledRect);
+                                               ISO_baseRect,ISO_scaledRect);
                                 ISO_gridCache[ISO_width-x-1][ISO_height-y-1][z]=1;
                         }
                         if(ISO_spriteCache[gwidth1-x][gheight1-y][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[gwidth1-x][gheight1-y][z], &scaledRect);
-                        }
+                                ISO_renderSprite(ISO_spriteCache[gwidth1-x][gheight1-y][z], ISO_scaledRect);
+                        }*/
                     break;
                     case(7):
+                        ISO_X_cacheRender(ISO_height-1-y,x, z, TS, xI, yI, x, y, z, ISO_scaledRect);
+                        /*
                         ISO_gridCache[ISO_height-1-y][x][z]=0;
                         if(ISO_grid[ISO_height-1-y][x][0]&&ISO_grid[ISO_height-1-y][x][z]&&
-                            ISO_inRect(-TS,-TS,xI,yI,scaledRect.x,scaledRect.y)&&ISO_checkRender(x,y,z)){
+                            ISO_inRect(-TS,-TS,xI,yI,ISO_scaledRect->x,ISO_scaledRect->y)&&ISO_checkRender(x,y,z)){
                                 SDL_RenderCopy(ISO_defaultRenderer,
                                                ISO_TileSet[ISO_set][ISO_grid[ISO_height-1-y][x][z]]->tex[ISO_viewdir],
-                                               ISO_baseRect,&scaledRect);
+                                               ISO_baseRect,ISO_scaledRect);
                                 ISO_gridCache[ISO_height-1-y][x][z]=1;
                         }
                         if(ISO_spriteCache[gheight1-y][x][z]!=NULL){
-                                ISO_renderSprite(ISO_spriteCache[gheight1-y][x][z], &scaledRect);
-                        }
+                                ISO_renderSprite(ISO_spriteCache[gheight1-y][x][z], ISO_scaledRect);
+                        }*/
+
                     break;
                 }
-                if((x==slx)&&(z==slz)){
-                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,&scaledRect);
+                //if((x==slx)&&(z==slz)){
+                if(!((x-slx)|(z-slz))){
+                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,ISO_scaledRect);
                 }
-                if((y==sly)&&(z==slz)){
-                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,&scaledRect);
+                if(!((y-sly)|(z-slz))){
+                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,ISO_scaledRect);
                 }
-                if((x==slx)&&(y==sly)){
-                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,&scaledRect);
+                if(!((x-slx)|(y-sly))){
+                    SDL_RenderCopy(ISO_defaultRenderer,ISO_TileSet[ISO_set][0]->tex[ISO_viewdir],ISO_baseRect,ISO_scaledRect);
                 }
             }
 		}
@@ -688,40 +733,91 @@ void ISO_compositeRender(){
 	ISO_gridCached=1;
 }
 
+void inline ISO_X_uncacheRender(int x, int y, int z, SDL_Rect *rect){
+    if(/*ISO_grid[x][y][0]&&*/ISO_gridCache[x][y][z]){
+        SDL_RenderCopy(ISO_defaultRenderer,
+                       ISO_TileSet[ISO_set][ISO_grid[x][y][z]]->tex[ISO_viewdir],
+                       ISO_baseRect,rect);
+    }
+    if(ISO_spriteCache[x][y][z]!=NULL){
+            ISO_renderSprite(ISO_spriteCache[x][y][z], rect);
+    }
+}
+
+void inline ISO_X_cacheRender(int x, int y, int z, int TS, int xI, int yI, int ox, int oy, int oz, SDL_Rect *rect){
+    ISO_gridCache[x][y][z]=0;
+    if(ISO_grid[x][y][0]&&ISO_grid[x][y][z]&&
+        ISO_inRect(-TS,-TS,xI,yI,rect->x,rect->y)&&ISO_checkRender(ox,oy,oz)){
+            SDL_RenderCopy(ISO_defaultRenderer,
+                           ISO_TileSet[ISO_set][ISO_grid[x][y][z]]->tex[ISO_viewdir],
+                           ISO_baseRect,rect);
+            ISO_gridCache[x][y][z]=1;
+    }
+    if(ISO_spriteCache[x][y][z]!=NULL){
+            ISO_renderSprite(ISO_spriteCache[x][y][z], rect);
+    }
+}
+
+
+
 char ISO_xDir[4] = {-1,1,1,-1};
 char ISO_yDir[4] = {1,1,-1,-1};
 
 ///map edge detection for spawning things
-int ISO_isEdgeTile(int x, int y, int z){
+int inline ISO_isEdgeTile(int x, int y, int z){
 	return (x-ISO_width+1)*(y-ISO_height+1)*(z-ISO_depth+1)*x*y;//0 is true -- tests bottom clipping
 }
 ///whether or not to render this tile -- empty tiles and non-square maps ignored
-int ISO_checkRender(int x, int y, int z){
+int inline ISO_checkRender(int x, int y, int z){
 
     if(!ISO_isEdgeTile(x,y,z)){
         return 1;//if it is on the edge, render it, due to clipping rules
 	}
 
-    int dirSetX[4] = {x,y,ISO_width-x-1,ISO_height-1-y};
-    int dirSetY[4] = {y,ISO_width-1-x,ISO_height-y-1,x};
+	register int vDirX = 0;
+	register int vDirY = 0;
+
+	switch(ISO_viewdir){
+    case(0):
+        vDirX = x;
+        vDirY = y;
+        break;
+    case(1):
+        vDirX = y;
+        vDirY = ISO_width-x-1;
+        break;
+    case(2):
+        vDirX = ISO_width-x-1;
+        vDirY = ISO_height-y-1;
+        break;
+    case(3):
+        vDirX = ISO_height-1-y;
+        vDirY = x;
+        break;
+    default:
+        return 0;
+	}
+
+    //int dirSetX[4] = {x,y,             ISO_width-x-1,ISO_height-1-y};
+    //int dirSetY[4] = {y,ISO_width-1-x,ISO_height-y-1,x};
 
     return
     (
-    (!ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][z+1]]->visible||
-     ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][z+1]]->transparent)
+    (!ISO_TileSet[ISO_set][ISO_grid[vDirX][vDirY][z+1]]->visible||
+     ISO_TileSet[ISO_set][ISO_grid[vDirX][vDirY][z+1]]->transparent)
     ||
-    (!ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]+ISO_xDir[ISO_viewdir]][dirSetY[ISO_viewdir]][z]]->visible||
-     ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]+ISO_xDir[ISO_viewdir]][dirSetY[ISO_viewdir]][z]]->transparent)
+    (!ISO_TileSet[ISO_set][ISO_grid[vDirX+ISO_xDir[ISO_viewdir]][vDirY][z]]->visible||
+     ISO_TileSet[ISO_set][ISO_grid[vDirX+ISO_xDir[ISO_viewdir]][vDirY][z]]->transparent)
     ||
-    (!ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]+ISO_yDir[ISO_viewdir]][z]]->visible||
-     ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]+ISO_yDir[ISO_viewdir]][z]]->transparent)
+    (!ISO_TileSet[ISO_set][ISO_grid[vDirX][vDirY+ISO_yDir[ISO_viewdir]][z]]->visible||
+     ISO_TileSet[ISO_set][ISO_grid[vDirX][vDirY+ISO_yDir[ISO_viewdir]][z]]->transparent)
     )
     &&
-    ISO_TileSet[ISO_set][ISO_grid[dirSetX[ISO_viewdir]][dirSetY[ISO_viewdir]][z]]->visible;
+    ISO_TileSet[ISO_set][ISO_grid[vDirX][vDirY][z]]->visible;
 
 	return 0;
 }
-void ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect){
+void inline ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect){
     ISO_Sprite *cache = sprite;
     do{
         if(cache->renderSprite!=NULL){
@@ -769,19 +865,19 @@ int ISO_X_determineScanline(){
 
 
 
-int ISO_inRect(int rx, int ry, int rw, int rh, int x, int y) {
+int inline ISO_inRect(int rx, int ry, int rw, int rh, int x, int y) {
     return (x > rx) && (x < rx + rw) && (y > ry) && (y < ry + rh);
 }
 
-int ISO_inCircle(int rx, int ry, double rm, int x, int y) {
+int inline ISO_inCircle(int rx, int ry, double rm, int x, int y) {
     return (sqrt((x - rx - rm) * (x - rx - rm) + (y - ry - rm) * (y - ry - rm)) <= rm);
 }
 
-int ISO_inDiamond(int x,int y,int xsize,int ysize,int px,int py){
+int inline ISO_inDiamond(int x,int y,int xsize,int ysize,int px,int py){
     return ISO_inRect(0,0,xsize,ysize,px-x-xsize/2+(py-y)*xsize/ysize,py-y)&&ISO_inRect(0,0,xsize,ysize,px-x,py-y+ysize/2-(px-x)*ysize/xsize);
 }
 
-int ISO_inCube(int x,int y,int xsize,int ysize,int px,int py){
+int inline ISO_inCube(int x,int y,int xsize,int ysize,int px,int py){
     return (ISO_inDiamond(x,y,xsize,ysize,px,py)||ISO_inDiamond(x,y+ysize,xsize,ysize,px,py)||ISO_inRect(x,y+ysize/2,xsize,ysize,px,py));
 }
 
@@ -802,6 +898,27 @@ int ISO_inCubeD(double x,double y,double xsize,double ysize,double px,double py)
 }
 
 
+void ISO_traverseAvailableSprites(void (*action)(ISO_Sprite*)){
+    if(ISO_sprites==NULL){
+        return;
+    }
+    int nonCopy = 0, copied = 0;
+    ISO_SpriteList *place = ISO_sprites;
+    do{
+        if(place->isCopied){
+            copied++;
+        }else{
+            nonCopy++;
+        }
+        if(place->leaf!=NULL){
+            action(place->leaf);
+        }
+        place = place->next;
+    }while(place!=NULL);
+    ///printf("Copied: %i  NotCopied: %i\n",copied, nonCopy);
+}
+
+
 ISO_Sprite *ISO_copySprite(ISO_Sprite *sprite){
 
     if(sprite==NULL){
@@ -813,13 +930,11 @@ ISO_Sprite *ISO_copySprite(ISO_Sprite *sprite){
     }
 
     ISO_Sprite *blank = ISO_createSprite();
-
-    blank->_X_place->isCopied = 1;
-
     if(blank==NULL){
         return NULL;
     }
 
+    blank->_X_place->isCopied = 1;
 
     //due to shenanigans, have to associate first layer to blank->sprite before loop
     ISO_SpriteLayer *xtra = SDL_calloc(sizeof(ISO_SpriteLayer),1);
@@ -970,6 +1085,10 @@ ISO_Sprite* ISO_X_createSprite(ISO_SpriteList* place){
     sprite->_X_place=place;
     place->leaf = sprite;
 
+    sprite->x=0;
+    sprite->y=0;
+    sprite->z=0;
+
     sprite->renderSprite = NULL;
     sprite->extend=NULL;
     sprite->freeExtension = NULL;
@@ -1097,6 +1216,64 @@ void ISO_X_deleteSpriteItem(ISO_SpriteList** delet){
 }*/
 
 
+SDL_Texture* ISO_generateCube(char* left, char* right, char* top){
+
+    //blank
+    //SDL_Surface *base = SDL_CreateRGBSurface(0,ISO_tileSize,ISO_tileSize,32,0xFF000000,0x00FF0000,0x0000FF00,0x000000FF);
+    SDL_Surface *sides[3] = {IMG_Load(left),IMG_Load(right),IMG_Load(top)};
+    int i,j;
+    for(i = 0; i < 3; i++){
+        if(sides[i]==NULL){
+            for(j = 0; j < 3; j++){
+                if(sides[j]!=NULL){
+                    sides[i] = sides[j];
+                    break;
+                }
+            }
+        }
+    }
+
+    for(i = 0; i < 3; i++){
+        if(sides[i]==NULL){//something is wrong free and escape
+            for(j = 0; j < 3; j++){
+                if(sides[j]!=NULL){
+                    SDL_FreeSurface(sides[j]);
+                }
+            }
+            return NULL;
+        }
+    }
+
+    SDL_Surface *ileft = rotozoomSurface(sides[0],45,1.0,0);//blit by half X
+    SDL_Surface *iright = rotozoomSurface(sides[1],-45,1.0,0);//blit by half -X
+    SDL_Surface *itop = rotozoomSurface(sides[1],-45,1.0,0);//blit by half Y
+
+    SDL_Rect dst;
+    dst.x = 0;
+    dst.y = 0;
+    dst.w = ISO_tileSize/2;
+    dst.h = ISO_tileSize;
+
+    SDL_Surface *buffer = SDL_CreateRGBSurface(0,ISO_tileSize,ISO_tileSize,32, ISO_RMASK,ISO_GMASK,ISO_BMASK,ISO_AMASK);
+    SDL_BlitSurface(NULL,ileft,buffer,&dst);
+    dst.x+=dst.w;
+    SDL_BlitSurface(NULL,iright,buffer,&dst);
+    dst.x = 0;
+    dst.w = ISO_tileSize;
+    dst.h = ISO_tileSize/2;
+    SDL_BlitSurface(NULL,itop,buffer,&dst);
+
+    SDL_Texture *end = SDL_CreateTextureFromSurface(ISO_defaultRenderer,buffer);
+
+    for(j = 0; j < 3; j++){
+        if(sides[j]!=NULL){
+            SDL_FreeSurface(sides[j]);
+        }
+    }
+
+    return NULL;
+
+}
 
 
 int ISO_setTileGraphics(ISO_Tile* tile, char* dir0, char* dir1, char* dir2, char*dir3){

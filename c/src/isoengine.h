@@ -176,8 +176,6 @@
 
 #define SHORT_MAX 65535
 
-
-
 typedef struct ISO_Tile{
     unsigned char visible;
     unsigned char transparent;
@@ -216,6 +214,7 @@ typedef struct ISO_SpriteLayer{
 } ISO_SpriteLayer;
 
 typedef struct ISO_Sprite{
+    unsigned char x,y,z;
     ISO_SpriteLayer*       sprite;
     struct ISO_Sprite*     next;
     struct ISO_Sprite*     prev;
@@ -309,12 +308,14 @@ ISO_Tile* ISO_extendTileSetBlank(unsigned char tileSet,unsigned char visible,uns
 
 ///set images per side, NULL char* default to previous face
 int ISO_setTileGraphics(ISO_Tile* tile, char* dir0, char* dir1, char* dir2, char*dir3);
+///creates graphics from specified iamges -- will generate as long as one exists
+SDL_Texture* ISO_generateCube(char* left, char* right, char* top);
 
 ///map edge detection -- 0 is true
-int ISO_isEdgeTile(int x, int y, int z);
+int inline ISO_isEdgeTile(int x, int y, int z);
 
 ///whether or not to render this tile
-int ISO_checkRender(int x, int y, int z);
+int inline ISO_checkRender(int x, int y, int z);
 
 ///set all the images of a tile from file
 int ISO_setTileImagesFromFile(ISO_Tile* tile, char* imageFile);
@@ -325,7 +326,7 @@ int* ISO_editDirSelect(unsigned short blockID);
 
 
 
-///Sets which data set to render from
+///Sets which data set to render from -- currently only 2 available without bounds checking
 void ISO_setGraphicsSet(unsigned short setID);
 
 ///If Automatic, sets the target FPS of independent threads
@@ -342,7 +343,9 @@ void ISO_deleteSprite(ISO_Sprite* sprite);
 ///Add a graphical layer for a sprite (reverse order, last layer add first)
 ISO_SpriteLayer* ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface);
 ///Renders a sprite at specified rect
-void ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect);
+void inline ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect);
+///apply actions to every available sprite (such as moving)
+void ISO_traverseAvailableSprites(void (*action)(ISO_Sprite*));
 //FIXME
 /*
 ///Copy last sprite in sprite set for recoloring
