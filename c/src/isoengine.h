@@ -220,9 +220,9 @@ typedef struct ISO_Sprite{
     struct ISO_Sprite*     prev;
     struct ISO_SpriteList* _X_place;///where this exists in the spriteList -- DO NOT EDIT
     /*Custom User Data*/
-    void (*renderSprite)(struct ISO_Sprite* sprite);
     void                 * extend;
     void (*freeExtension)(void*);
+    void (*renderSprite)(struct ISO_Sprite* sprite);
 } ISO_Sprite;
 
 typedef struct ISO_SpriteList{
@@ -241,7 +241,7 @@ unsigned short ISO_set;
 unsigned int   ISO_sizes[2];
 
 SDL_Rect*      ISO_baseRect;
-SDL_Rect*      ISO_scaledRect;//DEPRECATED
+SDL_Rect*      ISO_scaledRect;
 unsigned short ISO_tileSize;
 
 unsigned char  ISO_viewdir,ISO_gridCached;
@@ -273,53 +273,46 @@ unsigned short ISO_boundY;
 
 ///set all rendering to this target and initialize systems
 void ISO_init(SDL_Renderer* defaultRenderer, int threadSelectionDetection, int threadMapRendering, int targetFPS);
-
 ///release resources held by the system
 void ISO_exit();
 
-///creates and resets map data
+///creates and resets map data (including the sprite cache)
 int ISO_generateBlankMap(int w,int h, int dpth);
+///delets anything in the sprite cache
+void ISO_clearSpriteCache();
 
 ///sets map boundaries if possible while keeping map data
 ///useful for psuedo-clipping centered on 0,0 or not as much processing
 int ISO_setMapBoundaries(int w,int h, int dpth);
-
 ///set map data in a region
 ///safe to use out of bounds coordinates
 void ISO_setMapData(int x, int y, int z, int w, int h, int dpth, short blockID);
-
 ///set map data of a block
 ///safe to use out of bounds coordinates
 void ISO_setBlockData(int x, int y, int z, short blockID);
 
 ///render this map onto the renderer
 void ISO_renderIsoMap();
-
-///detection of selection position with cursor
+///detection of selection (which tile the pointer is on) position with cursor
 ///only calls after map has been cached
 ///auto threaded also calls this method, not advised if not manually threaded
 void ISO_detectSelect();
 
 ///extend with 1 image for all sides
 ISO_Tile* ISO_extendTileSet(char* newImage, unsigned char tileSet,unsigned char visible,unsigned char transparent,unsigned char solid,unsigned char walkable);
-
 ///extend without any graphical data
 ISO_Tile* ISO_extendTileSetBlank(unsigned char tileSet,unsigned char visible,unsigned char transparent,unsigned char solid,unsigned char walkable);
-
 ///set images per side, NULL char* default to previous face
 int ISO_setTileGraphics(ISO_Tile* tile, char* dir0, char* dir1, char* dir2, char*dir3);
 ///creates graphics from specified iamges -- will generate as long as one exists
 SDL_Texture* ISO_generateCube(char* left, char* right, char* top);
+///set all the images of a tile from file (prerendered only currently)
+int ISO_setTileImagesFromFile(ISO_Tile* tile, char* imageFile);
 
 ///map edge detection -- 0 is true
 int inline ISO_isEdgeTile(int x, int y, int z);
-
 ///whether or not to render this tile
 int inline ISO_checkRender(int x, int y, int z);
-
-///set all the images of a tile from file
-int ISO_setTileImagesFromFile(ISO_Tile* tile, char* imageFile);
-
 ///Attempt to edit the selected location with this block data
 ///returns location and previous block type in position [3] -1 type if failure
 int* ISO_editDirSelect(unsigned short blockID);
@@ -328,7 +321,6 @@ int* ISO_editDirSelect(unsigned short blockID);
 
 ///Sets which data set to render from -- currently only 2 available without bounds checking
 void ISO_setGraphicsSet(unsigned short setID);
-
 ///If Automatic, sets the target FPS of independent threads
 void ISO_setTargetFPS(int FPS);
 
@@ -337,22 +329,21 @@ void ISO_setTargetFPS(int FPS);
 //FIXME
 ///Create a blank sprite
 ISO_Sprite* ISO_createSprite();
+///Copies a sprite and allocates variable memory
+ISO_Sprite *ISO_copySprite(ISO_Sprite *sprite);
 ///Deletes a sprite properly -- if a copy, does not free pointer resources
 void ISO_deleteSprite(ISO_Sprite* sprite);
 
+///places or links a sprite into the sprite cache safely at the location specified
+void ISO_placeSprite(ISO_Sprite *sprite, int x, int y, int z);
 ///Add a graphical layer for a sprite (reverse order, last layer add first)
 ISO_SpriteLayer* ISO_addSpriteLayer(ISO_Sprite* sprite, char *file, Uint8 r, Uint8 g, Uint8 b, int keepSurface);
 ///Renders a sprite at specified rect
 void inline ISO_renderSprite(ISO_Sprite *sprite, SDL_Rect *scaledRect);
 ///apply actions to every available sprite (such as moving)
 void ISO_traverseAvailableSprites(void (*action)(ISO_Sprite*));
-//FIXME
-/*
-///Copy last sprite in sprite set for recoloring
-ISO_Sprite* ISO_extendSpriteSetCloneLast();
-///Copy the sprite for recoloring
-ISO_Sprite* ISO_extendSpriteSetClone(ISO_Sprite* sprite);
-*/
+
+
 
 ///Various ways to make adding tiles easier to understand when browsing
 
